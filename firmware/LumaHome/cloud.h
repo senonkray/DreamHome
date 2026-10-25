@@ -72,7 +72,7 @@ void cloudLoop(){
  report["micAvailable"]=bool(MIC_ENABLED);report["micLevel"]=(int)(micEnvelope*100);report["boot"]=cloudBoot;report["ack"]=cloudRevision;report["color"]=color;report["brightness"]=brightness;report["speed"]=speed;report["power"]=powerOn;report["effect"]=effect;
  report["remaining"]=timerActive&&(int32_t)(timerDeadline-millis())>0?(timerDeadline-millis()+999)/1000:0;report["rssi"]=WiFi.RSSI();
  String data;serializeJson(report,data);
- String request="POST /api/cloud/sync HTTP/1.1\r\nHost: "+String(CLOUD_HOST)+"\r\nX-API-Key: "+String(CLOUD_KEY)+"\r\nContent-Type: application/json\r\nAccept-Encoding: identity\r\nConnection: keep-alive\r\nContent-Length: "+String(data.length())+"\r\n\r\n"+data;
+ String request="POST /api/cloud/sync HTTP/1.1\r\nUser-Agent: LumaESP8266/2.0\r\nAccept: application/json\r\nHost: "+String(CLOUD_HOST)+"\r\nX-API-Key: "+String(CLOUD_KEY)+"\r\nContent-Type: application/json\r\nAccept-Encoding: identity\r\nConnection: keep-alive\r\nContent-Length: "+String(data.length())+"\r\n\r\n"+data;
  if(cloudClient.print(request)!=request.length()){cloudFail();return;}
  cloudStarted=millis();cloudWaiting=true;cloudBuffer="";
 }
