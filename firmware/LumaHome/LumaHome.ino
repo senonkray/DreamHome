@@ -5,6 +5,9 @@
 #include <LittleFS.h>
 #include <math.h>
 #include "config.h"
+#if __has_include("cloud-config.h")
+#include "cloud-config.h"
+#endif
 
 ESP8266WebServer server(80);
 uint8_t red=255, green=158, blue=87, brightness=75, speed=35;
@@ -14,8 +17,11 @@ uint32_t timerDeadline=0, lastFrame=0, audioTime=0;
 bool audioReceived=false;
 uint8_t audioLevel=100;
 float smoothR=0, smoothG=0, smoothB=0;
+#include "microphone.h"
+#include "cloud.h"
 
 void cors() {
+  server.client().setNoDelay(true);
   String origin=server.header("Origin");
   if(origin==ALLOWED_ORIGIN) {
     server.sendHeader("Access-Control-Allow-Origin",origin);
@@ -29,6 +35,7 @@ void errorResponse(int code,const String& message) {
   cors(); server.send(code,"application/json","{\"error\":\""+message+"\"}");
 }
 bool authorized() {
+  if(strlen(API_KEY)<24||String(API_KEY).startsWith("CHANGE_ME")){errorResponse(401,"Local API key not configured");return false;}
   String origin=server.header("Origin");
   String localOrigin="http://"+WiFi.localIP().toString();
   if(origin.length() && origin!=ALLOWED_ORIGIN && origin!=localOrigin && origin!="http://luma.local") {
@@ -48,6 +55,7 @@ void sendState() {
   char color[8];snprintf(color,sizeof(color),"#%02x%02x%02x",red,green,blue);
   uint32_t remaining=timerActive && (int32_t)(timerDeadline-millis())>0 ? (timerDeadline-millis()+999)/1000:0;
   String result="{\"device\":\"luma-esp8266\",\"color\":\""+String(color)+"\",\"brightness\":"+String(brightness)+",\"speed\":"+String(speed)+",\"power\":"+(powerOn?"true":"false")+",\"effect\":\""+effect+"\",\"remaining\":"+String(remaining)+",\"rssi\":"+String(WiFi.RSSI())+"}";
+  result.remove(result.length()-1);result+=",\"micAvailable\":"+String(MIC_ENABLED?"true":"false")+",\"micLevel\":"+String((int)(micEnvelope*100))+"}";
   cors();server.send(200,"application/json",result);
 }
 void statePost() {
@@ -56,7 +64,8 @@ void statePost() {
   int nextBrightness=brightness,nextSpeed=speed,nextPower=powerOn?1:0,nextAudio=100;
   if(!numberArg("brightness",0,100,nextBrightness)||!numberArg("speed",1,100,nextSpeed)||!numberArg("power",0,1,nextPower)||!numberArg("audio",0,100,nextAudio)) {errorResponse(400,"Out of range");return;}
   String nextEffect=server.hasArg("effect")?server.arg("effect"):effect;
-  if(nextEffect!="static"&&nextEffect!="breathe"&&nextEffect!="rainbow"&&nextEffect!="candle"){errorResponse(400,"Unknown effect");return;}
+  if(nextEffect!="static"&&nextEffect!="breathe"&&nextEffect!="rainbow"&&nextEffect!="candle"&&nextEffect!="sound"){errorResponse(400,"Unknown effect");return;}
+  if(nextEffect=="sound"&&!MIC_ENABLED){errorResponse(400,"Microphone not enabled in config.h");return;}
   uint32_t color=(red<<16)|(green<<8)|blue;
   if(server.hasArg("color")) {
     String value=server.arg("color");
@@ -89,6 +98,7 @@ void updateLight() {
   if(now-lastFrame<20)return;lastFrame=now;
   float r=red,g=green,b=blue,level=brightness/100.0f;
   float phase=(now/1000.0f)*(.1f+speed/100.0f);
+  if(effect=="sound")level*=.06f+.94f*micEnvelope;
   if(effect=="breathe")level*=.35f+.65f*(sinf(phase)+1)/2;
   if(effect=="candle")level*=.75f+.15f*sinf(phase*13)+.1f*sinf(phase*23);
   if(effect=="rainbow")rgbFromHue(phase*32,r,g,b);
@@ -107,13 +117,13 @@ void setup() {
   pinMode(RED_PIN,OUTPUT);pinMode(GREEN_PIN,OUTPUT);pinMode(BLUE_PIN,OUTPUT);
   analogWriteRange(255);analogWriteFreq(1000);
   analogWrite(RED_PIN,0);analogWrite(GREEN_PIN,0);analogWrite(BLUE_PIN,0);
-  if(strlen(API_KEY)<24 || String(API_KEY).startsWith("CHANGE_ME")) {
+  if(!cloudEnabled() && (strlen(API_KEY)<24 || String(API_KEY).startsWith("CHANGE_ME"))) {
     Serial.println("Set a unique API_KEY (at least 24 characters) in config.h, then upload again.");
     while(true)delay(1000);
   }
   LittleFSConfig fsConfig;fsConfig.setAutoFormat(false);LittleFS.setConfig(fsConfig);
   if(!LittleFS.begin())Serial.println("LittleFS unavailable. Upload filesystem image.");
-  WiFi.persistent(false);WiFi.mode(WIFI_STA);WiFi.setAutoReconnect(true);WiFi.hostname("luma");WiFi.begin(WIFI_SSID,WIFI_PASSWORD);
+  WiFi.persistent(false);WiFi.mode(WIFI_STA);WiFi.setSleepMode(WIFI_NONE_SLEEP);WiFi.setAutoReconnect(true);WiFi.hostname("luma");WiFi.begin(WIFI_SSID,WIFI_PASSWORD);
   Serial.print("Connecting to Wi-Fi");
   while(WiFi.status()!=WL_CONNECTED){delay(500);Serial.print('.');}
   Serial.println();Serial.print("Luma: http://");Serial.println(WiFi.localIP());
@@ -126,10 +136,11 @@ void setup() {
   server.on("/api/timer",HTTP_OPTIONS,[]{cors();server.send(204);});
   server.on("/",HTTP_GET,[]{serveFile("/index.html","text/html; charset=utf-8");});
   server.on("/index.html",HTTP_GET,[]{serveFile("/index.html","text/html; charset=utf-8");});
+  server.on("/transport.js",HTTP_GET,[]{serveFile("/transport.js","application/javascript; charset=utf-8");});
   server.on("/app.js",HTTP_GET,[]{serveFile("/app.js","application/javascript; charset=utf-8");});
   server.on("/style.css",HTTP_GET,[]{serveFile("/style.css","text/css; charset=utf-8");});
   server.on("/art.svg",HTTP_GET,[]{serveFile("/art.svg","image/svg+xml");});
   server.on("/guide.html",HTTP_GET,[]{serveFile("/guide.html","text/html; charset=utf-8");});
-  server.onNotFound([]{server.send(404,"text/plain","Not found");});server.begin();
+  server.onNotFound([]{server.send(404,"text/plain","Not found");});server.begin();cloudSetup();
 }
-void loop(){server.handleClient();MDNS.update();updateLight();yield();}
+void loop(){server.handleClient();MDNS.update();microphoneLoop();updateLight();cloudLoop();updateLight();yield();}

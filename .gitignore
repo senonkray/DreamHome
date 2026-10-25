@@ -1,3 +1,7 @@
 firmware/.pio/
 .DS_Store
 *.log
+node_modules/
+dist/
+.env*
+firmware/LumaHome/cloud-config.h
