@@ -2,8 +2,5 @@
   "buildCommand": "",
   "outputDirectory": "web",
   "framework": null,
-  "cleanUrls": true,
-  "rewrites": [
-    { "source": "/api/:path*", "destination": "https://luma-home-atelier-d25.abloomgnome257.chatgpt.site/api/:path*" }
-  ]
+  "cleanUrls": true
 }
