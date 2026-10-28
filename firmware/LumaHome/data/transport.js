@@ -1,7 +1,7 @@
 /* Only the newest unsent light state matters. Never build a slider backlog. */
 class LumaTransport {
   constructor(send,{gap=120,retryDelay=300,onSuccess=()=>{},onError=()=>{}}={}){Object.assign(this,{send,gap,retryDelay,onSuccess,onError});this.pending=null;this.busy=false;this.timer=null;this.last=0;this.epoch=0;}
-  enqueue(data,{ephemeral=false}={}){if(ephemeral&&(this.busy||this.pending))return;this.pending={data,ephemeral,retries:0};this.schedule();}
+  enqueue(data,{ephemeral=false,immediate=false}={}){if(ephemeral&&(this.busy||this.pending))return;this.pending={data,ephemeral,retries:0};this.schedule(immediate?0:undefined);}
   reset(){this.epoch++;this.pending=null;clearTimeout(this.timer);this.timer=null;}
   schedule(delay=0){if(this.busy||this.timer||!this.pending)return;this.timer=setTimeout(()=>{this.timer=null;this.flush()},Math.max(delay,this.gap-(Date.now()-this.last),0));}
   async flush(){if(this.busy||!this.pending)return;const item=this.pending,epoch=this.epoch;this.pending=null;this.busy=true;this.last=Date.now();let retry=0;

@@ -20,6 +20,7 @@ bool cloudEnabled(){return strlen(CLOUD_KEY)>=24 && !String(CLOUD_KEY).startsWit
 void updateLight();
 int nameIndex(const char* const* names,int count,const String& value);
 bool parsePalette(const String& text,uint32_t* out,uint8_t& count);
+String paletteText();
 void cloudSetup(){
  if(!cloudEnabled())return;
  configTime(0,0,"pool.ntp.org","time.google.com");
@@ -75,9 +76,12 @@ void cloudLoop(){
  }
  if((int32_t)(now-cloudNext)<0)return;
  if(!cloudClient.connected()&&!cloudClient.connect(CLOUD_HOST,443)){cloudFail();return;}
- StaticJsonDocument<512> report;char color[8];snprintf(color,sizeof(color),"#%02x%02x%02x",red,green,blue);
+ StaticJsonDocument<768> report;char color[8];snprintf(color,sizeof(color),"#%02x%02x%02x",red,green,blue);
  report["micAvailable"]=bool(MIC_ENABLED);report["micLevel"]=(int)(micEnvelope*100);report["boot"]=cloudBoot;report["ack"]=cloudRevision;report["color"]=color;report["brightness"]=brightness;report["speed"]=speed;report["power"]=powerOn;report["effect"]=effect;
  report["remaining"]=timerActive&&(int32_t)(timerDeadline-millis())>0?(timerDeadline-millis()+999)/1000:0;report["rssi"]=WiFi.RSSI();
+ // Older cloud servers only know the basic effects: "effect" stays compatible, "fx" carries the real one.
+ if(effect=="custom")report["effect"]="static";
+ report["fx"]=effect;report["engine"]=2;report["fw"]=LUMA_VERSION;report["palette"]=paletteText();report["motion"]=MOTIONS[motion];report["react"]=REACTIONS[reaction];report["floor"]=floorLevel;
  String data;serializeJson(report,data);
  String request="POST /api/cloud/sync HTTP/1.1\r\nUser-Agent: LumaESP8266/2.0\r\nAccept: application/json\r\nHost: "+String(CLOUD_HOST)+"\r\nX-API-Key: "+String(CLOUD_KEY)+"\r\nContent-Type: application/json\r\nAccept-Encoding: identity\r\nConnection: keep-alive\r\nContent-Length: "+String(data.length())+"\r\n\r\n"+data;
  if(cloudClient.print(request)!=request.length()){cloudFail();return;}
