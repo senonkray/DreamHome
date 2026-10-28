@@ -9,3 +9,6 @@
 #define RED_PIN 13    // D7 / GPIO13
 #define GREEN_PIN 14  // D5 / GPIO14
 #define BLUE_PIN 12   // D6 / GPIO12
+// Backup Wi-Fi (optional): used only while the first network is down. Leave "" to disable.
+#define WIFI_SSID_2 ""
+#define WIFI_PASSWORD_2 ""
