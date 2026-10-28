@@ -234,7 +234,7 @@ const char UPDATE_PAGE[] PROGMEM=R"(<!doctype html><html lang=ru><meta charset=u
 <h2>Luma · обновление по Wi-Fi</h2><p>Версия прошивки: <b id=v>…</b></p>
 <input id=k type=password placeholder="API_KEY из config.h"><input id=f type=file accept=".bin,.gz"><button id=b>Загрузить</button><progress id=p max=100 value=0 hidden></progress><p id=m></p>
 <script>
-const $=id=>document.getElementById(id);$('k').value=sessionStorage.getItem('luma-token')||'';
+const $=id=>document.getElementById(id);$('k').value=localStorage.getItem('luma-token')||sessionStorage.getItem('luma-token')||'';
 fetch('/api/state',{headers:{'X-API-Key':$('k').value}}).then(r=>r.json()).then(s=>$('v').textContent=s.fw||'?').catch(()=>$('v').textContent='?');
 $('b').onclick=async()=>{const file=$('f').files[0];if(!file)return;const head=new Uint8Array(await file.slice(0,2).arrayBuffer());
 const fw=head[0]==0xE9||(head[0]==0x1f&&head[1]==0x8b);const fd=new FormData();fd.append(fw?'firmware':'filesystem',file);
