@@ -18,6 +18,8 @@ bool cloudWaiting=false;
 uint8_t cloudFailures=0;
 bool cloudEnabled(){return strlen(CLOUD_KEY)>=24 && !String(CLOUD_KEY).startsWith("PASTE_");}
 void updateLight();
+int nameIndex(const char* const* names,int count,const String& value);
+bool parsePalette(const String& text,uint32_t* out,uint8_t& count);
 void cloudSetup(){
  if(!cloudEnabled())return;
  configTime(0,0,"pool.ntp.org","time.google.com");
@@ -44,11 +46,16 @@ void cloudApply(const JsonDocument& doc){
  uint32_t revision=doc["revision"]|cloudRevision;
  if((doc["apply"]|false)&&revision>cloudRevision){
   JsonObjectConst cmd=doc["command"].as<JsonObjectConst>();
-  if(cmd.containsKey("color")){String c=cmd["color"].as<String>();if(c.length()==7){uint32_t value=strtoul(c.c_str()+1,nullptr,16);red=value>>16;green=value>>8;blue=value;}}
+  if(cmd.containsKey("color")){String c=cmd["color"].as<String>();if(c.length()==7){uint32_t value=strtoul(c.c_str()+1,nullptr,16);red=value>>16;green=value>>8;blue=value;palette[0]=value;paletteCount=1;}}
+  // Custom-mode fields are optional: older cloud servers simply do not send them.
+  if(cmd.containsKey("palette")){uint32_t next[6];uint8_t count=0;if(parsePalette(cmd["palette"].as<String>(),next,count)){memcpy(palette,next,sizeof(uint32_t)*count);paletteCount=count;}}
+  if(cmd.containsKey("motion")){int m=nameIndex(MOTIONS,4,cmd["motion"].as<String>());if(m>=0)motion=m;}
+  if(cmd.containsKey("react")){int m=nameIndex(REACTIONS,4,cmd["react"].as<String>());if(m>=0)reaction=m;}
+  if(cmd.containsKey("floor"))floorLevel=constrain(cmd["floor"].as<int>(),0,100);
   if(cmd.containsKey("brightness"))brightness=constrain(cmd["brightness"].as<int>(),0,100);
   if(cmd.containsKey("speed"))speed=constrain(cmd["speed"].as<int>(),1,100);
   if(cmd.containsKey("power"))powerOn=cmd["power"].as<bool>();
-  if(cmd.containsKey("effect")){String next=cmd["effect"].as<String>();if(next!="sound"||MIC_ENABLED)effect=next;}
+  if(cmd.containsKey("effect")){String next=cmd["effect"].as<String>();if(nameIndex(EFFECTS,6,next)>=0&&(next!="sound"||MIC_ENABLED))effect=next;}
   if(cmd.containsKey("timerEnd")){double until=cmd["timerEnd"].as<double>();double seconds=until/1000.0-(double)time(nullptr);timerActive=seconds>0;timerDeadline=millis()+(uint32_t)(max(0.0,seconds)*1000.0);}
   audioReceived=false;updateLight();
  }
